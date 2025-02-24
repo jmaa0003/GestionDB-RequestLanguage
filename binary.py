@@ -1,45 +1,95 @@
-from io import IOBase, RawIOBase
-import typing
+from io import IOBase
+from typing import BinaryIO
 import sys
 
+#TODO: Raise des erreur (d'IO ?), Print un messsage ou rien ? Pour chaque fonction
+#TODO: J'aurai besoin de ça -> bytes.expandtabs(tabsize)
 class BinaryFile:
-    def __init__(self, file: typing.BinaryIO):
+    def __init__(self, file: BinaryIO):
         """Constructeur de BinaryFile"""
         self.file = file
 
     def goto(self, pos: int) -> None:
         """Déplace l’endroit pointé dans le fichier à pos bytes après le début du fichier\
             si pos est positif et à pos bytes avant la fin du fichier si est négatif"""
-        if isinstance(pos, int):
+        if isinstance(pos, int) and self.file.seekable:
             if pos >= 0:
-                IOBase.seek(pos)
+                self.file.seek(pos)
             else:
-                IOBase.seek(-pos, whence = 1+1)
-        #TODO: Raise une erreur (d'IO ?), Print un messsage ou rien ?
+                self.file.seek(-pos, whence = 1+1)
+        
 
     def get_size(self) -> int:
-        """Renvoie la taille (nombre de bytes)  du fichier"""
-        return len(RawIOBase.read())
+        """Renvoie la taille (nombre de bytes) du fichier"""
+        return len(self.file.read())
 
-    #Note: soit n un entier, ~n renvoie l'entier en complément à 2
+    #TODO: ajouter les bytes qui disent combien de bytes seront nécessaires
 
     def write_integer(self, n: int, size: int)-> int:
         """Écrit l’entier n sur size bytes à l’endroit pointé actuellement par le fichier"""
-        if IOBase.writable():
-            if n > 0:
-                RawIOBase.write((~n).to_bytes(length = size, byteorder = 'little'))
-            else:
-                RawIOBase.write((~n).to_bytes(length = size, byteorder = 'little', signed = True  ))
+        if self.file.writable():
+            self.file.write(n.to_bytes(length = size, byteorder = 'little', signed = True ))
         return size
     
 
     def write_integer_to(self, n: int, size: int, pos: int)-> int:
-        """Écrit l’entier n sur size bytes à la pos-ième positIOBasen dans le fichier""" 
-        BinaryFile.goto(pos)
-        
-        if IOBase.writable():
-            if n > 0:
-                RawIOBase.write((~n).to_bytes(length = size, byteorder = 'little'))
-            else:
-                RawIOBase.write((~n).to_bytes(length = size, byteorder = 'little', signed = True  ))
+        """Écrit l’entier n sur size bytes à la pos-ième position dans le fichier\
+            ( *voir def goto() )""" 
+        self.file.goto(pos)
+        if self.file.writable():
+            self.file.write(n.to_bytes(length = size, byteorder = 'little', signed = True ))
         return size
+    
+
+    def write_string(self, s: str)-> int:
+        """écrit la chaîne de caractère s à l’endroit pointé actuellement par le fichier"""
+        previous_file_size = self.file.get_size()
+        if self.file.writable():
+            self.file.write(s.to_bytes(byteorder = 'little', signed = True ))
+        return self.file.get_size() - previous_file_size
+        
+
+    def write_string_to(self, s: str, pos: int) -> int:
+        """écrit la chaîne de caractère s à la pos-ième* position dans le fichier\
+            ( *voir def goto() )"""
+        previous_file_size = self.file.get_size()
+        self.file.goto(pos)
+        if self.file.writable():
+            self.file.write(s.to_bytes(byteorder = 'little', signed = True ))
+        return self.file.get_size() - previous_file_size
+    
+
+    def read_integer(self, size: int)-> int:
+        """renvoie l’entier encodé sur size bytes à partir de l’endroit pointé\
+            actuellement par le fichier"""
+        if self.file.readable():
+            encoded_integer = self.file.read(size)
+        return int.from_bytes(encoded_integer, length = size, byteorder = 'little', signed = True )
+
+    def read_integer_from(self, size: int, pos: int)-> int:
+        """renvoie l’entier encodé sur size bytes à partir de la pos-ième*\
+            position dans le fichier\
+        ( *voir def goto() )"""
+        self.file.goto(pos)
+        if self.file.readable():
+            encoded_integer = self.file.read(size)
+        return int.from_bytes(encoded_integer, length = size, byteorder = 'little', signed = True )
+        
+
+    def read_string(self)-> str:
+        """renvoie la chaîne de caractères encodée à\
+            l’endroit pointé actuellement par le fichier"""
+        if self.file.readable():
+            encoded_string = self.file.read()
+        return bytes.decode(encoded_string[::-1])
+
+
+    def read_string_from(self, pos: int)-> str:
+        """renvoie la chaîne de caractères encodée à partir de la pos-ième*\
+            position dans le fichier\
+        ( *voir def goto() )"""
+        self.file.goto(pos)
+        if self.file.readable():
+            encoded_string = self.file.read()
+        return bytes.decode(encoded_string[::-1])
+    
