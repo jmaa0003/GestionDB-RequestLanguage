@@ -1,4 +1,3 @@
-from io import IOBase
 from typing import BinaryIO
 import sys
 
@@ -22,8 +21,7 @@ class BinaryFile:
     def get_size(self) -> int:
         """Renvoie la taille (nombre de bytes) du fichier"""
         return len(self.file.read())
-
-    #TODO: ajouter les bytes qui disent combien de bytes seront nécessaires
+    
 
     def write_integer(self, n: int, size: int)-> int:
         """Écrit l’entier n sur size bytes à l’endroit pointé actuellement par le fichier"""
@@ -43,8 +41,14 @@ class BinaryFile:
 
     def write_string(self, s: str)-> int:
         """écrit la chaîne de caractère s à l’endroit pointé actuellement par le fichier"""
-        previous_file_size = self.get_size()
+        number_of_bytes_needed, previous_file_size = 0, self.get_size()
         if self.file.writable():
+            for character in s:
+                if character.isascii():
+                    number_of_bytes_needed += 1
+                else:
+                    number_of_bytes_needed += 2
+            self.write_integer(number_of_bytes_needed, 2)     
             self.file.write(s.encode())
         return self.get_size() - previous_file_size
         
@@ -52,9 +56,16 @@ class BinaryFile:
     def write_string_to(self, s: str, pos: int) -> int:
         """écrit la chaîne de caractère s à la pos-ième* position dans le fichier\
             ( *voir def goto() )"""
-        previous_file_size = self.get_size()
+        number_of_bytes_needed, previous_file_size = 0, self.get_size()
         self.goto(pos)
         if self.file.writable():
+            for character in s:
+                if character.isascii():
+                    number_of_bytes_needed += 1
+                else:
+                    number_of_bytes_needed += 2
+
+            self.write_integer(number_of_bytes_needed, 2)
             self.file.write(s.encode())
         return self.get_size() - previous_file_size
     
@@ -80,8 +91,9 @@ class BinaryFile:
         """renvoie la chaîne de caractères encodée à\
             l’endroit pointé actuellement par le fichier"""
         if self.file.readable():
+            self.file.seek(2, 1)
             encoded_string = self.file.read()
-        return bytes.decode(encoded_string[::-1])
+        return bytes.decode(encoded_string)
 
 
     def read_string_from(self, pos: int)-> str:
@@ -90,6 +102,7 @@ class BinaryFile:
         ( *voir def goto() )"""
         self.goto(pos)
         if self.file.readable():
+            self.file.seek(2, 1)
             encoded_string = self.file.read()
-        return bytes.decode(encoded_string[::-1])
+        return bytes.decode(encoded_string)
     
