@@ -20,6 +20,7 @@ class BinaryFile:
 
     def get_size(self) -> int:
         """Renvoie la taille (nombre de bytes) du fichier"""
+        self.goto(0)
         return len(self.file.read())
     
 
