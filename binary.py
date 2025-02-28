@@ -1,5 +1,4 @@
 from typing import BinaryIO
-import sys
 
 #TODO: Raise des erreur (d'IO ?), Print un messsage ou rien ? Pour chaque fonction
 #TODO: J'aurai besoin de ça -> bytes.expandtabs(tabsize)
@@ -77,6 +76,7 @@ class BinaryFile:
         if self.file.readable():
             encoded_integer = self.file.read(size)
         return int.from_bytes(encoded_integer, byteorder = 'little', signed = True )
+
 
     def read_integer_from(self, size: int, pos: int)-> int:
         """renvoie l’entier encodé sur size bytes à partir de la pos-ième*\
