@@ -60,7 +60,17 @@ class Database:
 
     def get_table_signature(self, table_name: str) -> TableSignature:
         try:
-            with open(f"{table_name}.table", "rb+") as tb:
-                pass #TODO
+            with open(f"{table_name}.table", "rb") as tb:
+                table_file, listtb_signature = BinaryFile(tb), []
+                table_file.goto(4)
+                NUMBER_OF_FIELDS = table_file.read_integer(4)
+                for i in range(NUMBER_OF_FIELDS):
+                    index_field_type = table_file.read_integer(1)
+                    temp_field_type, temp_name = list(FieldType)[index_field_type], table_file.read_string()
+                    listtb_signature.append((temp_name, temp_field_type))
+                return listtb_signature
+            
         except FileNotFoundError:
             raise ValueError(f"{table_name}.table does not stand in this path.")
+
+        
