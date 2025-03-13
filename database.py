@@ -17,9 +17,9 @@ class Database:
 
 
     def create_table(self, table_name: str, *fields: TableSignature) -> None:
-        """Crée une nouvelle table de nom table_name et de signature fields."""
-        if os.path.exists(f"{table_name}.table"):
-            raise ValueError(f'{table_name}.table already stands in this path')
+        """Crée une nouvelle table de nom table_name et de signature fields."""      
+        if os.path.exists(f"{self.name}/{table_name}.table"):
+            raise ValueError(f'{table_name}.table already stands in this directory')
         else:
             with open(f"{table_name}.table", "wb+") as tb:
                 table_file = BinaryFile(tb)
@@ -71,34 +71,44 @@ class Database:
                 NUMBER_OF_FIELDS = table_file.read_integer(4)
                 for i in range(NUMBER_OF_FIELDS):
                     index_field_type = table_file.read_integer(1)
-                    temp_field_type, temp_name = list(FieldType)[index_field_type], table_file.read_string()
+                    temp_field_type, temp_name = list(FieldType)[index_field_type - 1], table_file.read_string()
                     listtb_signature.append((temp_name, temp_field_type))
-                return listtb_signature
+                return listtb_signature 
             
         except FileNotFoundError:
-            raise ValueError(f"{table_name}.table does not stand in this path.")
+            raise ValueError(f"{table_name}.table does not stand in this directory.")
         
     
     def add_entry(self, table_name: str, entry: Entry) -> None:
         """ajoute l’entrée entry à la table de nom table_name."""
         with open(f"{table_name}.table", "wb+") as tb:
-            if isinstance(entry[1], str):
-                pass
-            else:
-                pass
+            table_file = BinaryFile(tb)
+            for entry_name in entry:
+                if isinstance(entry[entry_name], str):
+                    #si pas de place ajouter le double de 0 (compteur à 16+ tout le fichier)
+                    #écrire dans le string buffer et decaler la première place dispo et l'entry buffer (peut être aussi les pointeurs ?)
+                    pass
+                else:
+                    pass
+                    #dans entry buffer ecrire le dernier ID sur 4 bytes à la bonne place
+                    #nombre d'entree  = read + 1 et ecrire
+                    # gérer les pointeurs
 
 
     def get_complete_table(self, table_name: str) -> list[Entry]:
         """Renvoie toutes les entrées de la table de nom table_name dans une liste."""
+        pass
 
 
-    def get_entry(self, table_name: str, field_name: str, field_value: Field) -> Entry | None:
+    def get_entry(self, table_name: str, field_name: str, field_value: Field) -> Entry | None :
         """Renvoie une entrée (quelconque) de la table de nom table_name dont le champ field_name contient\
         la valeur field_value si une telle entrée existe, et qui renvoie None sinon."""
+        pass
 
 
     def get_entries(self, table_name: str, field_name: str, field_value: Field) -> list[Entry]:
         """Renvoie toutes les entrées de la table de nom table_name dont le champ field_name contient la valeur field_name."""
+        pass
 
 
     def select_entry(self, table_name: str, fields: tuple[str], field_name: str, field_value: Field) -> Field | tuple[Field]:
@@ -106,10 +116,12 @@ class Database:
         la valeur field_value et renvoie ces champs uniquement. Si un unique champ est demandé, la fonction ne doit pas
         renvoyer un tuple de taille 1, mais bien uniquement la valeur du champ demandé.
         Sinon, le tuple renvoyé doit contenir les valeurs des champs dans le même ordre que celui demandé par le paramètre fields."""
+        pass
 
 
     def select_entries(self, table: str, fields: tuple[str], field_name: str, field_value: Field) -> list[Field | tuple[Field]]:
         """Similaire à select_entry cependant renvoie les champs demandés de
            toutes les entrées de la table de nom table_name satisfaisant la condition."""
-        
+        pass
+
 
