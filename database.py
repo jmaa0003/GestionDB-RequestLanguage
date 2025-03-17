@@ -14,50 +14,47 @@ class Database:
     
     def __init__(self, name: str):
         self.name = name
+        if not os.path.exists(self.name):
+            os.mkdir(self.name)
 
 
     def create_table(self, table_name: str, *fields: TableSignature) -> None:
         """Crée une nouvelle table de nom table_name et de signature fields."""
         if os.path.exists(f"{table_name}.table"):
             raise ValueError(f'{table_name}.table already stands in this directory')
-        else:
-            if not os.path.exists(self.name):
-                os.mkdir(self.name)
-            with open(f"{self.name}/{table_name}.table", "wb+") as tb:
-                table_file = BinaryFile(tb)
-                INITIAL_STR_BUFFER_SIZE = 16
-                # SIGNATURE
-                tb.write('ULDB'.encode())
-                table_file.write_integer(len(fields), 4)
-                for one_field, a_field_type in fields:
-                    table_file.write_integer(a_field_type.value, FieldType.INTEGER.value)
-                    table_file.write_string(one_field)
-                OFFSET_STRING_BUFFER = tb.tell() + 12
-                OFFSET_ENTRY_BUFFER = OFFSET_STRING_BUFFER + 16
-                for i in range(2):
-                    table_file.write_integer(OFFSET_STRING_BUFFER, 4) # Offset + Première place dans le string buffer
-                table_file.write_integer(OFFSET_ENTRY_BUFFER, 4)
-                # STRING BUFFER INITIALISED
-                table_file.write_integer(0, INITIAL_STR_BUFFER_SIZE)
-                # ENTRY BUFFER 
-                table_file.write_integer(0, 8) # Le dernier ID utilisé + nombre total d'éntrées dans la table
-                for i in range(3):
-                    table_file.write_integer(-1, 4) # 3 pointeurs de l'entry buffer
-                table_file.write_integer(0, 4) #début liste chaînée
-                for i in range(len(fields)):
-                    table_file.write_integer(0, 4)
-                for i in range(2):   
-                    table_file.write_integer(-1, 4) #deux derniers pointeurs d'élément de la liste chaînée
-    
+        with open(f"{self.name}/{table_name}.table", "wb+") as tb:
+            table_file = BinaryFile(tb)
+            INITIAL_STR_BUFFER_SIZE = 16
+            # SIGNATURE
+            tb.write('ULDB'.encode())
+            table_file.write_integer(len(fields), 4)
+            for one_field, a_field_type in fields:
+                table_file.write_integer(a_field_type.value, FieldType.INTEGER.value)
+                table_file.write_string(one_field)
+            OFFSET_STRING_BUFFER = tb.tell() + 12
+            OFFSET_ENTRY_BUFFER = OFFSET_STRING_BUFFER + 16
+            for i in range(2):
+                table_file.write_integer(OFFSET_STRING_BUFFER, 4) # Offset + Première place dans le string buffer
+            table_file.write_integer(OFFSET_ENTRY_BUFFER, 4)
+            # STRING BUFFER INITIALISED
+            table_file.write_integer(0, INITIAL_STR_BUFFER_SIZE)
+            # ENTRY BUFFER 
+            table_file.write_integer(0, 8) # Le dernier ID utilisé + nombre total d'éntrées dans la table
+            for i in range(3):
+                table_file.write_integer(-1, 4) # 3 pointeurs de l'entry buffer
+            table_file.write_integer(0, 4) #début liste chaînée
+            for i in range(len(fields)):
+                table_file.write_integer(0, 4)
+            for i in range(2):   
+                table_file.write_integer(-1, 4) #deux derniers pointeurs d'élément de la liste chaînée
+
 
     def list_tables(self) -> list[str]:
         """Renvoie une liste avec le nom de toutes les tables existant dans cette DB"""
         list_of_names = []
-        if os.listdir(self.name):
-            for pseudo_table in os.listdir(self.name):
-                if pseudo_table.endswith(".table"):
-                    list_of_names.append(pseudo_table.rsplit(".table")[0])
-        
+        for pseudo_table in os.listdir(self.name):
+            if pseudo_table.endswith(".table"):
+                list_of_names.append(pseudo_table.rsplit(".table")[0])
         return list_of_names
     
      
@@ -88,7 +85,10 @@ class Database:
     def add_entry(self, table_name: str, entry: Entry) -> None:
         """ajoute l’entrée entry à la table de nom table_name."""
         with open(f"{table_name}.table", "wb") as tb:
-            table_file = BinaryFile(tb)
+            table_file, start_entry_buffer = BinaryFile(tb), -1 * self.get_offset_entry_buffer(table_name)
+            previous_id_entry = table_file.read_integer_from(4, -start_entry_buffer)
+            table_file.write_integer_to(previous_id_entry, 4, -start_entry_buffer)
+            #TODO: continuer add_entry
             for entry_name in entry:
                 if isinstance(entry[entry_name], str):
                     #si pas de place ajouter le double de 0 (compteur à 16+ tout le fichier)
@@ -137,12 +137,5 @@ class Database:
             table_file = BinaryFile(tb)"""
 
     
-    def get_offset_to_entry_buffer(self, table_name: str) -> int:
-        """Renvoie l'offset ou le décalage de l'entry buffer par rapport au début du fichier."""
-        """with open(f'{table_name}.table', 'rb+') as tb:
-            table_file, offset_eb, string_buffer_size = BinaryFile(tb), 0, 2**4
-            offset_eb += 8
-            for field_tuple in table_file.get_table_signature(self, table_name)[1]:
-                denomination = field_tuple[0]
-                offset_eb += 1 + 2 + len([denomination.encode()])
-                #TODO: sera mieux avec les fonctions connexes"""
+    def get_offset_entry_buffer(self, table_name: str) -> int:
+        return 4 * (8 + len(self.get_table_signature(table_name)))

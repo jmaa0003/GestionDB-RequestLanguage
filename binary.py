@@ -1,6 +1,5 @@
 from typing import BinaryIO
 
-#TODO: Raise des erreur (d'IO ?), Print un messsage ou rien ? Pour chaque fonction
 #TODO: J'aurai besoin de ça -> bytes.expandtabs(tabsize)
 class BinaryFile:
     def __init__(self, file: BinaryIO):
