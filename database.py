@@ -86,7 +86,7 @@ class Database:
         """ajoute l’entrée entry à la table de nom table_name."""
         with open(f"{table_name}.table", "wb") as tb:
             table_file = BinaryFile(tb)
-            START_ENTRY_BUFFER = -1 * self.get_offset_entry_buffer(table_name)
+            START_ENTRY_BUFFER = self.get_offset_entry_buffer(table_name)
             PREVIOUS_ID_ENTRY = table_file.read_integer_from(4, START_ENTRY_BUFFER)
             PREVIOUS_AMOUNT_ENTRIES = table_file.read_integer_from(4, START_ENTRY_BUFFER + 4)
             FIRST_ENTRY_POINTER = table_file.read_integer_from(4, START_ENTRY_BUFFER + 4*2)
