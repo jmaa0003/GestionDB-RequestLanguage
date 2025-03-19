@@ -74,7 +74,7 @@ class Database:
                 NUMBER_OF_FIELDS = table_file.read_integer(4)
                 for i in range(NUMBER_OF_FIELDS):
                     index_field_type = table_file.read_integer(1)
-                    temp_field_type, temp_name = list(FieldType)[index_field_type - 1], table_file.read_string()
+                    temp_field_type, temp_name = list(FieldType)[index_field_type - 1].name, table_file.read_string()
                     listtb_signature.append((temp_name, temp_field_type))
                 return listtb_signature
             
@@ -85,10 +85,27 @@ class Database:
     def add_entry(self, table_name: str, entry: Entry) -> None:
         """ajoute l’entrée entry à la table de nom table_name."""
         with open(f"{table_name}.table", "wb") as tb:
-            table_file, start_entry_buffer = BinaryFile(tb), -1 * self.get_offset_entry_buffer(table_name)
-            previous_id_entry = table_file.read_integer_from(4, -start_entry_buffer)
-            table_file.write_integer_to(previous_id_entry, 4, -start_entry_buffer)
-            #TODO: continuer add_entry
+            table_file = BinaryFile(tb)
+            START_ENTRY_BUFFER = -1 * self.get_offset_entry_buffer(table_name)
+            PREVIOUS_ID_ENTRY = table_file.read_integer_from(4, START_ENTRY_BUFFER)
+            PREVIOUS_AMOUNT_ENTRIES = table_file.read_integer_from(4, START_ENTRY_BUFFER + 4)
+            FIRST_ENTRY_POINTER = table_file.read_integer_from(4, START_ENTRY_BUFFER + 4*2)
+            LAST_ENTRY_POINTER = table_file.read_integer_from(4, START_ENTRY_BUFFER + 4*3)
+            CURRENT_ID_ENTRY = table_file.read_integer_from(4, START_ENTRY_BUFFER + 4*5)
+            OFFSET_ELEMENT_POINTERS, OFFSET_NEW_ENTRY = START_ENTRY_BUFFER + 4 * len(entry), 4*(len(entry) + 8)
+            PREVIOUS_ELEMENT_POINTER = table_file.read_integer_from(4, OFFSET_ELEMENT_POINTERS)
+            NEXT_ELEMENT_POINTER = table_file.read_integer_from(4, OFFSET_ELEMENT_POINTERS + 4)
+            
+            table_file.write_integer_to(PREVIOUS_ID_ENTRY + 1, 4, START_ENTRY_BUFFER)
+            table_file.write_integer_to(PREVIOUS_AMOUNT_ENTRIES + 1, 4, START_ENTRY_BUFFER + 4 )
+            if not PREVIOUS_ID_ENTRY:
+                FIRST_ENTRY_POINTER = LAST_ENTRY_POINTER = START_ENTRY_BUFFER + 5*4
+                table_file.write_integer_to(FIRST_ENTRY_POINTER, 4, START_ENTRY_BUFFER + 4*2)
+                table_file.write_integer_to(LAST_ENTRY_POINTER, 4, START_ENTRY_BUFFER + 4*3)
+            else:
+                table_file.write_integer_to(LAST_ENTRY_POINTER + OFFSET_NEW_ENTRY, 4, START_ENTRY_BUFFER + 4*3)
+            
+            table_file.write_integer_to(CURRENT_ID_ENTRY + 1, 4, START_ENTRY_BUFFER + 4*5)
             for entry_name in entry:
                 if isinstance(entry[entry_name], str):
                     #si pas de place ajouter le double de 0 (compteur à 16+ tout le fichier)
@@ -99,7 +116,9 @@ class Database:
                     #dans entry buffer ecrire le dernier ID sur 4 bytes à la bonne place
                     #nombre d'entree  = read + 1 et ecrire
                     # gérer les pointeurs
-
+            table_file.write_integer_to(LAST_ENTRY_POINTER, 4, TODO)
+            
+                
 
     def get_complete_table(self, table_name: str) -> list[Entry]:
         """Renvoie toutes les entrées de la table de nom table_name dans une liste."""
@@ -138,4 +157,11 @@ class Database:
 
     
     def get_offset_entry_buffer(self, table_name: str) -> int:
-        return 4 * (8 + len(self.get_table_signature(table_name)))
+        with open(f'{table_name}.table', 'rb+') as tb:
+            table_file = BinaryFile(tb)
+            table_file.goto(8)
+            length_table_signature = 0
+            for i in self.get_table_signature(table_name):
+                field_name = i[0]
+                length_table_signature += 1 + len(field_name) + 2
+            return 4*4 + length_table_signature - 4*5
