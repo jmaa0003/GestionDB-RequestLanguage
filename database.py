@@ -67,6 +67,7 @@ class Database:
         
 
     def get_table_signature(self, table_name: str) -> TableSignature:
+        """Renvoie la signature de la table de type TableSignature"""
         try:
             with open(f"{table_name}.table", "rb+") as tb:
                 table_file, listtb_signature = BinaryFile(tb), []
@@ -74,7 +75,8 @@ class Database:
                 NUMBER_OF_FIELDS = table_file.read_integer(4)
                 for i in range(NUMBER_OF_FIELDS):
                     index_field_type = table_file.read_integer(1)
-                    temp_field_type, temp_name = list(FieldType)[index_field_type - 1].name, table_file.read_string()
+                    temp_field_type, temp_name = list(FieldType)[index_field_type - 1], table_file.read_string()
+                    print(temp_field_type)
                     listtb_signature.append((temp_name, temp_field_type))
                 return listtb_signature
             
@@ -106,17 +108,19 @@ class Database:
                 table_file.write_integer_to(LAST_ENTRY_POINTER + OFFSET_NEW_ENTRY, 4, START_ENTRY_BUFFER + 4*3)
             
             table_file.write_integer_to(CURRENT_ID_ENTRY + 1, 4, START_ENTRY_BUFFER + 4*5)
-            for entry_name in entry:
-                if isinstance(entry[entry_name], str):
+            cursor_as_of_now = START_ENTRY_BUFFER + 4*6
+            for entry_name in entry.keys():
+                entry_value = entry.get(entry_name)
+                if isinstance(entry_value, str):
                     #si pas de place ajouter le double de 0 (compteur à 16+ tout le fichier)
                     #écrire dans le string buffer et decaler la première place dispo et l'entry buffer (peut être aussi les pointeurs ?)
-                    pass
+                    if not self.available_space_string_buffer(table_name, entry_value):
+                        #TODO décalage dans le file
+
+                        
                 else:
-                    pass
-                    #dans entry buffer ecrire le dernier ID sur 4 bytes à la bonne place
-                    #nombre d'entree  = read + 1 et ecrire
-                    # gérer les pointeurs
-            table_file.write_integer_to(LAST_ENTRY_POINTER, 4, TODO)
+                    table_file.write_integer(entry.get(entry_name), 4)
+            table_file.write_integer_to(LAST_ENTRY_POINTER, 4, -8) #le pointer
             
                 
 
@@ -157,11 +161,47 @@ class Database:
 
     
     def get_offset_entry_buffer(self, table_name: str) -> int:
+        """Renvoie le décalage entre le début de la table table_name et l'entry_buffer. Pratique pour le localiser
+           dans la table table_name"""
         with open(f'{table_name}.table', 'rb+') as tb:
             table_file = BinaryFile(tb)
             table_file.goto(8)
             length_table_signature = 0
-            for i in self.get_table_signature(table_name):
-                field_name = i[0]
+            for field_name, field_type in self.get_table_signature(table_name):
                 length_table_signature += 1 + len(field_name) + 2
-            return 4*4 + length_table_signature - 4*5
+            return length_table_signature - 4
+        
+    
+    def get_string_buffer(self, table_name: str) -> bytes:
+        """Renvoie le string buffer"""
+        with open(f'{table_name}.table', 'rb+') as tb:
+            table_file = BinaryFile(tb)
+            offset = 4*5 + self.get_number_of_bytes_table_signature(table_name)
+            table_file.goto(offset)
+            offset_before_end_table = ( len(self.get_table_signature(table_name)) + 8 ) * 4 
+            steps = table_file.get_size() - offset_before_end_table
+            string_buffer = tb.read(steps)
+            return string_buffer
+
+    
+    def get_number_of_bytes_table_signature(self, table_name: str) -> int:
+        """Renvoie le nombre de bytes dans la signature de la table dans le header"""
+        with open(f'{table_name}.table', 'rb+') as tb:
+            table_file, length_table_signature = BinaryFile(tb), 0
+            for field_name, field_type in self.get_table_signature(table_name):
+                length_table_signature += 1 + len(field_name) + 2
+            return length_table_signature
+
+    def available_space_string_buffer(self, table_name: str, entry_value: str) -> bool:
+        """Renvoie True s'il y a de la place pour entry_value dans le string_buffer, False sinon"""
+        available_space, i = 0, -1
+        string_buffer_to_iterate = self.get_string_buffer(table_name)
+        while abs(i) <= len(string_buffer_to_iterate):
+            while string_buffer_to_iterate[i] == b'\x00':
+                available_space += 1
+                i -= 1
+            else:
+                available_space = 0
+                i += 1
+        return len(entry_value) + 2 == available_space - 1
+    
