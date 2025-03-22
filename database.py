@@ -1,5 +1,6 @@
 from binary import BinaryFile
 from enum import Enum
+from math import log2, ceil
 import os
 
 class FieldType(Enum):
@@ -108,18 +109,31 @@ class Database:
                 table_file.write_integer_to(LAST_ENTRY_POINTER + OFFSET_NEW_ENTRY, 4, START_ENTRY_BUFFER + 4*3)
             
             table_file.write_integer_to(CURRENT_ID_ENTRY + 1, 4, START_ENTRY_BUFFER + 4*5)
-            cursor_as_of_now = START_ENTRY_BUFFER + 4*6
+            cursor_as_of_now = START_ENTRY_BUFFER + 4*6 
+            table_file.goto(cursor_as_of_now)
+
             for entry_name in entry.keys():
                 entry_value = entry.get(entry_name)
+                 
                 if isinstance(entry_value, str):
                     #si pas de place ajouter le double de 0 (compteur à 16+ tout le fichier)
                     #écrire dans le string buffer et decaler la première place dispo et l'entry buffer (peut être aussi les pointeurs ?)
+                    size_of_string_buffer = self.available_space_string_buffer(table_name, entry_value, True)
                     if not self.available_space_string_buffer(table_name, entry_value):
-                        #TODO décalage dans le file
-
-                        
+                        table_file.goto(cursor_as_of_now + size_of_string_buffer)
+                        remaining_content_of_file = tb.read()
+                        table_file.goto(cursor_as_of_now + size_of_string_buffer)
+                        exponent = ceil(log2(1 + 2 + len(entry_value) + size_of_string_buffer))
+                        table_file.write_integer(0, 2**exponent - size_of_string_buffer)
+                        #Au cas où TODO Attention, probleme que les autres on eu est peut etre un 0 en plus/ moins
+                        tb.write(remaining_content_of_file)
+                    else:
+                        #TODO écrire à la position libre
+                        first_place_in_str_buffer = table_file.get_string_buffer(table_name, True) + 4
+                        table_file.write_string(" " + entry_value )
                 else:
                     table_file.write_integer(entry.get(entry_name), 4)
+                    #TODO Champs
             table_file.write_integer_to(LAST_ENTRY_POINTER, 4, -8) #le pointer
             
                 
@@ -156,8 +170,9 @@ class Database:
 
     def get_table_size(self, table_name: str) -> int:
         """Renvoie le nombre d’entrées dans la table de nom table_name"""
-        """with open(f'{table_name}.table', 'rb+') as tb:
-            table_file = BinaryFile(tb)"""
+        with open(f'{table_name}.table', 'rb+') as tb:
+            table_file = BinaryFile(tb)
+            pass
 
     
     def get_offset_entry_buffer(self, table_name: str) -> int:
@@ -165,23 +180,19 @@ class Database:
            dans la table table_name"""
         with open(f'{table_name}.table', 'rb+') as tb:
             table_file = BinaryFile(tb)
-            table_file.goto(8)
-            length_table_signature = 0
-            for field_name, field_type in self.get_table_signature(table_name):
-                length_table_signature += 1 + len(field_name) + 2
-            return length_table_signature - 4
+            offset = table_file.read_integer_from(4, 4*4 + self.get_number_of_bytes_table_signature(table_name))
+            return offset - 20
         
     
-    def get_string_buffer(self, table_name: str) -> bytes:
-        """Renvoie le string buffer"""
+    def get_string_buffer(self, table_name: str, get_pos: bool = False) -> bytes | int:
+        """Renvoie le string_buffer. Si get_pos est donné à True, renvoie l'offset du string_buffer"""
         with open(f'{table_name}.table', 'rb+') as tb:
             table_file = BinaryFile(tb)
-            offset = 4*5 + self.get_number_of_bytes_table_signature(table_name)
-            table_file.goto(offset)
-            offset_before_end_table = ( len(self.get_table_signature(table_name)) + 8 ) * 4 
-            steps = table_file.get_size() - offset_before_end_table
+            position_offset_str_buffer = table_file.read_integer_from(4, 8 + self.get_number_of_bytes_table_signature(table_name))
+            steps = self.get_offset_entry_buffer(table_name) - table_file.read_integer_from(4, position_offset_str_buffer)
+            table_file.goto(position_offset_str_buffer)
             string_buffer = tb.read(steps)
-            return string_buffer
+            return string_buffer if not get_pos else position_offset_str_buffer 
 
     
     def get_number_of_bytes_table_signature(self, table_name: str) -> int:
@@ -192,8 +203,10 @@ class Database:
                 length_table_signature += 1 + len(field_name) + 2
             return length_table_signature
 
-    def available_space_string_buffer(self, table_name: str, entry_value: str) -> bool:
-        """Renvoie True s'il y a de la place pour entry_value dans le string_buffer, False sinon"""
+
+    def available_space_string_buffer(self, table_name: str, entry_value: str, give_size: bool = False) -> bool | int:
+        """Renvoie True s'il y a de la place pour entry_value dans le string_buffer, False sinon. 
+            Si give_size est donné à True, renvoie la taille du string_buffer."""
         available_space, i = 0, -1
         string_buffer_to_iterate = self.get_string_buffer(table_name)
         while abs(i) <= len(string_buffer_to_iterate):
@@ -203,5 +216,6 @@ class Database:
             else:
                 available_space = 0
                 i += 1
-        return len(entry_value) + 2 == available_space - 1
+        return len(entry_value) + 2 == available_space - 1 if not give_size and isinstance(entry_value, str)\
+               else len(string_buffer_to_iterate)
     
