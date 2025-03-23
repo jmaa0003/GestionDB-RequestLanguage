@@ -77,7 +77,6 @@ class Database:
                 for i in range(NUMBER_OF_FIELDS):
                     index_field_type = table_file.read_integer(1)
                     temp_field_type, temp_name = list(FieldType)[index_field_type - 1], table_file.read_string()
-                    print(temp_field_type)
                     listtb_signature.append((temp_name, temp_field_type))
                 return listtb_signature
             
@@ -87,7 +86,7 @@ class Database:
     
     def add_entry(self, table_name: str, entry: Entry) -> None:
         """ajoute l’entrée entry à la table de nom table_name."""
-        with open(f"{table_name}.table", "wb") as tb:
+        with open(f"{table_name}.table", "wb+") as tb:
             table_file = BinaryFile(tb)
             START_ENTRY_BUFFER = self.get_offset_entry_buffer(table_name)
             PREVIOUS_ID_ENTRY = table_file.read_integer_from(4, START_ENTRY_BUFFER)
@@ -95,9 +94,7 @@ class Database:
             FIRST_ENTRY_POINTER = table_file.read_integer_from(4, START_ENTRY_BUFFER + 4*2)
             LAST_ENTRY_POINTER = table_file.read_integer_from(4, START_ENTRY_BUFFER + 4*3)
             CURRENT_ID_ENTRY = table_file.read_integer_from(4, START_ENTRY_BUFFER + 4*5)
-            OFFSET_ELEMENT_POINTERS, OFFSET_NEW_ENTRY = START_ENTRY_BUFFER + 4 * len(entry), 4*(len(entry) + 8)
-            PREVIOUS_ELEMENT_POINTER = table_file.read_integer_from(4, OFFSET_ELEMENT_POINTERS)
-            NEXT_ELEMENT_POINTER = table_file.read_integer_from(4, OFFSET_ELEMENT_POINTERS + 4)
+            OFFSET_NEW_ENTRY = 4*(len(entry) + 8)
             
             table_file.write_integer_to(PREVIOUS_ID_ENTRY + 1, 4, START_ENTRY_BUFFER)
             table_file.write_integer_to(PREVIOUS_AMOUNT_ENTRIES + 1, 4, START_ENTRY_BUFFER + 4 )
@@ -109,32 +106,44 @@ class Database:
                 table_file.write_integer_to(LAST_ENTRY_POINTER + OFFSET_NEW_ENTRY, 4, START_ENTRY_BUFFER + 4*3)
             
             table_file.write_integer_to(CURRENT_ID_ENTRY + 1, 4, START_ENTRY_BUFFER + 4*5)
-            cursor_as_of_now = START_ENTRY_BUFFER + 4*6 
-            table_file.goto(cursor_as_of_now)
+            CURSOR_AS_OF_NOW = START_ENTRY_BUFFER + 4*6 
+            table_file.goto(CURSOR_AS_OF_NOW)
 
             for entry_name in entry.keys():
-                entry_value = entry.get(entry_name)
-                 
+                entry_value, exponent, size_of_string_buffer = entry.get(entry_name), 0, 1
+                extra_bytes_str_buffer = 2**exponent - size_of_string_buffer
                 if isinstance(entry_value, str):
-                    #si pas de place ajouter le double de 0 (compteur à 16+ tout le fichier)
-                    #écrire dans le string buffer et decaler la première place dispo et l'entry buffer (peut être aussi les pointeurs ?)
                     size_of_string_buffer = self.available_space_string_buffer(table_name, entry_value, True)
                     if not self.available_space_string_buffer(table_name, entry_value):
-                        table_file.goto(cursor_as_of_now + size_of_string_buffer)
+                        table_file.goto(CURSOR_AS_OF_NOW + size_of_string_buffer)
                         remaining_content_of_file = tb.read()
-                        table_file.goto(cursor_as_of_now + size_of_string_buffer)
+                        table_file.goto(CURSOR_AS_OF_NOW + size_of_string_buffer)
                         exponent = ceil(log2(1 + 2 + len(entry_value) + size_of_string_buffer))
                         table_file.write_integer(0, 2**exponent - size_of_string_buffer)
+                        extra_bytes_str_buffer += 2**exponent - size_of_string_buffer
                         #Au cas où TODO Attention, probleme que les autres on eu est peut etre un 0 en plus/ moins
                         tb.write(remaining_content_of_file)
-                    else:
-                        #TODO écrire à la position libre
-                        first_place_in_str_buffer = table_file.get_string_buffer(table_name, True) + 4
-                        table_file.write_string(" " + entry_value )
+                    #REMODIFICATION DES DONNEES DU HEADER + DES POINTEURS TODO
+                    START_ENTRY_BUFFER = table_file.write_integer_to(START_ENTRY_BUFFER + extra_bytes_str_buffer, 4,\
+                                                                      self.get_offset_entry_buffer(table_name, extra_bytes_str_buffer))
+                    self.get_offset_entry_buffer(table_name)
+                    table_file.write_integer_to(START_ENTRY_BUFFER)
+                    
+                    FIRST_ENTRY_POINTER = table_file.read_integer_from(4, START_ENTRY_BUFFER + 4*2 + 2**exponent - size_of_string_buffer)
+                    offset_first_place_str_buffer = self.get_string_buffer(table_name, True) + 4
+                    # TODO Si le petit index est vers l'espace devant champs
+                    first_place_str_buffer = table_file.read_integer_from(4, offset_first_place_str_buffer)
+                    table_file.write_string( " " + entry_value )
+                    table_file.write_integer_to(first_place_str_buffer + len(entry_value) + 1, 4, first_place_str_buffer )
                 else:
                     table_file.write_integer(entry.get(entry_name), 4)
-                    #TODO Champs
-            table_file.write_integer_to(LAST_ENTRY_POINTER, 4, -8) #le pointer
+            
+            table_file.write_integer_to(LAST_ENTRY_POINTER, 4, -8)
+            table_file.write_integer_to(-1, 4, -4) 
+            
+            NEW_LAST_ENTRY_POINTER = LAST_ENTRY_POINTER + 4*(3 + len(self.get_table_signature(table_name)))
+            table_file.write_integer_to(NEW_LAST_ENTRY_POINTER, 4, LAST_ENTRY_POINTER) 
+            # Modifier le pointeur vers l'élément suivant, du précedent élément
             
                 
 
@@ -175,13 +184,13 @@ class Database:
             pass
 
     
-    def get_offset_entry_buffer(self, table_name: str) -> int:
+    def get_offset_entry_buffer(self, table_name: str, modif: int = None) -> int:
         """Renvoie le décalage entre le début de la table table_name et l'entry_buffer. Pratique pour le localiser
-           dans la table table_name"""
+           dans la table table_name. modif donne le nombre de bytes ajoutés dans le fichier, par un agrandissement du string buffer."""
         with open(f'{table_name}.table', 'rb+') as tb:
             table_file = BinaryFile(tb)
             offset = table_file.read_integer_from(4, 4*4 + self.get_number_of_bytes_table_signature(table_name))
-            return offset - 20
+            return offset - 20 if not modif else offset - 20 + modif
         
     
     def get_string_buffer(self, table_name: str, get_pos: bool = False) -> bytes | int:
@@ -189,6 +198,7 @@ class Database:
         with open(f'{table_name}.table', 'rb+') as tb:
             table_file = BinaryFile(tb)
             position_offset_str_buffer = table_file.read_integer_from(4, 8 + self.get_number_of_bytes_table_signature(table_name))
+            print(self.get_offset_entry_buffer(table_name), )
             steps = self.get_offset_entry_buffer(table_name) - table_file.read_integer_from(4, position_offset_str_buffer)
             table_file.goto(position_offset_str_buffer)
             string_buffer = tb.read(steps)
