@@ -21,7 +21,8 @@ class Database:
 
     def create_table(self, table_name: str, *fields: TableSignature) -> None:
         """Crée une nouvelle table de nom table_name et de signature fields."""
-        if os.path.exists(f"{table_name}.table"):
+
+        if os.path.exists(f"{self.name}/{table_name}.table"):
             raise ValueError(f'{table_name}.table already stands in this directory')
         with open(f"{self.name}/{table_name}.table", "wb+") as tb:
             table_file = BinaryFile(tb)
@@ -70,23 +71,25 @@ class Database:
     def get_table_signature(self, table_name: str) -> TableSignature:
         """Renvoie la signature de la table de type TableSignature"""
         try:
-            with open(f"{table_name}.table", "rb+") as tb:
+            with open(f"{self.name}/{table_name}.table", "rb+") as tb:
                 table_file, listtb_signature = BinaryFile(tb), []
                 table_file.goto(4)
                 NUMBER_OF_FIELDS = table_file.read_integer(4)
                 for i in range(NUMBER_OF_FIELDS):
                     index_field_type = table_file.read_integer(1)
-                    temp_field_type, temp_name = list(FieldType)[index_field_type - 1], table_file.read_string()
+                    field_type_name = list(FieldType)[index_field_type - 1].name
+                    temp_field_type, temp_name = eval(f'FieldType.{field_type_name}'), table_file.read_string()
                     listtb_signature.append((temp_name, temp_field_type))
+                    print('BRUH', temp_name)
                 return listtb_signature
             
-        except FileNotFoundError:
+        except:
             raise ValueError(f"{table_name}.table does not stand in this directory.")
         
     
     def add_entry(self, table_name: str, entry: Entry) -> None:
         """ajoute l’entrée entry à la table de nom table_name."""
-        with open(f"{table_name}.table", "wb+") as tb:
+        with open(f"{self.name}/{table_name}.table", "wb+") as tb:
             table_file = BinaryFile(tb)
             START_ENTRY_BUFFER = self.get_offset_entry_buffer(table_name)
             PREVIOUS_ID_ENTRY = table_file.read_integer_from(4, START_ENTRY_BUFFER)
@@ -179,7 +182,7 @@ class Database:
 
     def get_table_size(self, table_name: str) -> int:
         """Renvoie le nombre d’entrées dans la table de nom table_name"""
-        with open(f'{table_name}.table', 'rb+') as tb:
+        with open(f'{self.name}/{table_name}.table', 'rb+') as tb:
             table_file = BinaryFile(tb)
             pass
 
@@ -187,7 +190,7 @@ class Database:
     def get_offset_entry_buffer(self, table_name: str, modif: int = None) -> int:
         """Renvoie le décalage entre le début de la table table_name et l'entry_buffer. Pratique pour le localiser
            dans la table table_name. modif donne le nombre de bytes ajoutés dans le fichier, par un agrandissement du string buffer."""
-        with open(f'{table_name}.table', 'rb+') as tb:
+        with open(f'{self.name}/{table_name}.table', 'rb+') as tb:
             table_file = BinaryFile(tb)
             offset = table_file.read_integer_from(4, 4*4 + self.get_number_of_bytes_table_signature(table_name))
             return offset - 20 if not modif else offset - 20 + modif
@@ -195,10 +198,9 @@ class Database:
     
     def get_string_buffer(self, table_name: str, get_pos: bool = False) -> bytes | int:
         """Renvoie le string_buffer. Si get_pos est donné à True, renvoie l'offset du string_buffer"""
-        with open(f'{table_name}.table', 'rb+') as tb:
+        with open(f'{self.name}/{table_name}.table', 'rb+') as tb:
             table_file = BinaryFile(tb)
             position_offset_str_buffer = table_file.read_integer_from(4, 8 + self.get_number_of_bytes_table_signature(table_name))
-            print(self.get_offset_entry_buffer(table_name), )
             steps = self.get_offset_entry_buffer(table_name) - table_file.read_integer_from(4, position_offset_str_buffer)
             table_file.goto(position_offset_str_buffer)
             string_buffer = tb.read(steps)
@@ -207,11 +209,10 @@ class Database:
     
     def get_number_of_bytes_table_signature(self, table_name: str) -> int:
         """Renvoie le nombre de bytes dans la signature de la table dans le header"""
-        with open(f'{table_name}.table', 'rb+') as tb:
-            table_file, length_table_signature = BinaryFile(tb), 0
-            for field_name, field_type in self.get_table_signature(table_name):
-                length_table_signature += 1 + len(field_name) + 2
-            return length_table_signature
+        length_table_signature = 0
+        for field_name, field_type in self.get_table_signature(table_name):
+            length_table_signature += 1 + len(field_name) + 2
+        return length_table_signature
 
 
     def available_space_string_buffer(self, table_name: str, entry_value: str, give_size: bool = False) -> bool | int:
